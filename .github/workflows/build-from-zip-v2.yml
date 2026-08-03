@@ -1,4 +1,4 @@
-name: Build Mlay Service depuis ZIP
+name: Build M'lay Service depuis ZIP
 
 on:
   workflow_dispatch:
@@ -21,67 +21,50 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Installer Gradle 8.9
+      - name: Installer Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
 
-      - name: Extraire et corriger le projet Android
+      - name: Extraire le projet Android depuis le ZIP
         shell: bash
         run: |
           python3 <<'PY'
-          import os
           import pathlib
-          import re
           import shutil
           import zipfile
+          import os
 
           archives = sorted(pathlib.Path('.').glob('*mlay*.zip'))
           if not archives:
-              raise SystemExit('Aucun ZIP Mlay trouvé dans le dépôt.')
+              raise SystemExit("Aucun ZIP 'mlay-service' trouvé dans le dépôt. "
+                                "Assure-toi d'avoir uploadé mlay-service.zip à la racine.")
 
-          # Prend la version la plus récente dans le nom de fichier.
           archive = archives[-1]
           shutil.rmtree('extracted', ignore_errors=True)
           with zipfile.ZipFile(archive) as zf:
               zf.extractall('extracted')
 
-          settings = next(pathlib.Path('extracted').rglob('settings.gradle.kts'), None)
+          settings = next(pathlib.Path('extracted').rglob('settings.gradle'), None)
           if settings is None:
-              raise SystemExit('settings.gradle.kts introuvable dans le ZIP.')
+              raise SystemExit('settings.gradle introuvable dans le ZIP.')
 
           project = settings.parent.resolve()
-          app_gradle = project / 'app' / 'build.gradle.kts'
-          if not app_gradle.exists():
-              raise SystemExit('app/build.gradle.kts introuvable.')
-
-          text = app_gradle.read_text(encoding='utf-8')
-
-          # Corrige l'ancienne ligne Kotlin DSL invalide :
-          # if (file("google-services.json").exists()) id(...)
-          text = re.sub(
-              r'^\s*if\s*\(\s*file\("google-services\.json"\)\.exists\(\)\s*\)\s*id\("com\.google\.gms\.google-services"\)\s*$',
-              '',
-              text,
-              flags=re.MULTILINE,
-          )
-          app_gradle.write_text(text, encoding='utf-8')
 
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env:
               env.write(f'PROJECT_DIR={project}\n')
 
           print('ZIP utilisé :', archive)
           print('Projet détecté :', project)
-          print('app/build.gradle.kts corrigé.')
           PY
 
-      - name: Compiler l APK de test
+      - name: Compiler l'APK de debug
         shell: bash
         run: |
           set -o pipefail
           gradle -p "$PROJECT_DIR" --no-daemon --stacktrace assembleDebug 2>&1 | tee build.log
 
-      - name: Localiser l APK
+      - name: Localiser l'APK généré
         shell: bash
         run: |
           python3 <<'PY'
@@ -99,14 +82,14 @@ jobs:
           print('APK trouvé :', apk)
           PY
 
-      - name: Publier l APK
+      - name: Publier l'APK
         uses: actions/upload-artifact@v4
         with:
           name: mlay-service-debug-apk
           path: ${{ env.APK_FILE }}
           if-no-files-found: error
 
-      - name: Publier le journal en cas d échec
+      - name: Publier le journal en cas d'échec
         if: failure()
         uses: actions/upload-artifact@v4
         with:
