@@ -26,17 +26,78 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Extraire le projet Android
+      - name: Extraire et corriger le projet Android
         shell: bash
-        run: python3 -c 'import os,pathlib,shutil,zipfile; z=sorted(pathlib.Path(".").glob("*mlay*.zip")); assert z,"Aucun ZIP Mlay trouvé"; shutil.rmtree("extracted",ignore_errors=True); zipfile.ZipFile(z[-1]).extractall("extracted"); s=next(pathlib.Path("extracted").rglob("settings.gradle.kts")); p=str(s.parent.resolve()); open(os.environ["GITHUB_ENV"],"a").write("PROJECT_DIR="+p+"\n"); print("ZIP utilisé:",z[-1]); print("Projet détecté:",p)'
+        run: |
+          python3 <<'PY'
+          import os
+          import pathlib
+          import re
+          import shutil
+          import zipfile
+
+          archives = sorted(pathlib.Path('.').glob('*mlay*.zip'))
+          if not archives:
+              raise SystemExit('Aucun ZIP Mlay trouvé dans le dépôt.')
+
+          # Prend la version la plus récente dans le nom de fichier.
+          archive = archives[-1]
+          shutil.rmtree('extracted', ignore_errors=True)
+          with zipfile.ZipFile(archive) as zf:
+              zf.extractall('extracted')
+
+          settings = next(pathlib.Path('extracted').rglob('settings.gradle.kts'), None)
+          if settings is None:
+              raise SystemExit('settings.gradle.kts introuvable dans le ZIP.')
+
+          project = settings.parent.resolve()
+          app_gradle = project / 'app' / 'build.gradle.kts'
+          if not app_gradle.exists():
+              raise SystemExit('app/build.gradle.kts introuvable.')
+
+          text = app_gradle.read_text(encoding='utf-8')
+
+          # Corrige l'ancienne ligne Kotlin DSL invalide :
+          # if (file("google-services.json").exists()) id(...)
+          text = re.sub(
+              r'^\s*if\s*\(\s*file\("google-services\.json"\)\.exists\(\)\s*\)\s*id\("com\.google\.gms\.google-services"\)\s*$',
+              '',
+              text,
+              flags=re.MULTILINE,
+          )
+          app_gradle.write_text(text, encoding='utf-8')
+
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env:
+              env.write(f'PROJECT_DIR={project}\n')
+
+          print('ZIP utilisé :', archive)
+          print('Projet détecté :', project)
+          print('app/build.gradle.kts corrigé.')
+          PY
 
       - name: Compiler l APK de test
         shell: bash
-        run: gradle -p "$PROJECT_DIR" --no-daemon --stacktrace assembleDebug 2>&1 | tee build.log
+        run: |
+          set -o pipefail
+          gradle -p "$PROJECT_DIR" --no-daemon --stacktrace assembleDebug 2>&1 | tee build.log
 
       - name: Localiser l APK
         shell: bash
-        run: python3 -c 'import os,pathlib; a=list(pathlib.Path(os.environ["PROJECT_DIR"]).rglob("*debug*.apk")); assert a,"APK introuvable"; p=str(a[0].resolve()); open(os.environ["GITHUB_ENV"],"a").write("APK_FILE="+p+"\n"); print("APK trouvé:",p)'
+        run: |
+          python3 <<'PY'
+          import os
+          import pathlib
+
+          project = pathlib.Path(os.environ['PROJECT_DIR'])
+          apks = list(project.rglob('*debug*.apk'))
+          if not apks:
+              raise SystemExit('APK debug introuvable.')
+
+          apk = apks[0].resolve()
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env:
+              env.write(f'APK_FILE={apk}\n')
+          print('APK trouvé :', apk)
+          PY
 
       - name: Publier l APK
         uses: actions/upload-artifact@v4
