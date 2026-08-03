@@ -28,7 +28,7 @@ jobs:
 
       - name: Extraire automatiquement le ZIP Mlay
         shell: bash
-        run: |
+        run: 
           set -euo pipefail
           ZIP_FILE="$(find . -maxdepth 2 -type f \( -iname 'mlay-service-android*.zip' -o -iname '*mlay*.zip' \) | head -n 1)"
           if [ -z "${ZIP_FILE:-}" ]; then
@@ -53,4 +53,3 @@ jobs:
           name: mlay-service-debug-apk
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          
