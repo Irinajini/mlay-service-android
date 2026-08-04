@@ -34,7 +34,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          ZIP_FILE="mlay-service-3.zip"
+          ZIP_FILE="mlay-service.zip"
 
           if [ ! -f "$ZIP_FILE" ]; then
             echo "ERREUR : $ZIP_FILE est introuvable à la racine du dépôt."
